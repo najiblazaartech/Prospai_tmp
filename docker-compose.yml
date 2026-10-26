@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: prospai
+      POSTGRES_PASSWORD: prospai
+      POSTGRES_DB: prospai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build: ./backend
+    env_file: .env
+    environment:
+      # Moteur de recherche web actif par defaut en prod (gratuit, sans cle).
+      WEB_DISCOVERY: "true"
+    depends_on: [db]
+    ports:
+      - "8000:8000"
+    command: sh -c "sleep 3 && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  worker:
+    build: ./backend
+    env_file: .env
+    depends_on: [db]
+    command: python -m app.worker
+
+  web:
+    build: ./frontend
+    env_file: .env
+    depends_on: [api]
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
