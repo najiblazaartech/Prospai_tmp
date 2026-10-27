@@ -1,0 +1,47 @@
+# Render Blueprint for ProspAI (working copy only).
+# Database is managed separately in Render to avoid creating a duplicate database.
+services:
+  - type: web
+    name: prospai-tmp-api
+    runtime: docker
+    repo: https://github.com/najiblazaartech/Prospai_tmp
+    branch: fix/real-data-and-cors
+    rootDir: backend
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: frankfurt
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENV
+        value: production
+      - key: WEB_DISCOVERY
+        value: "true"
+      - key: CORS_ORIGINS
+        value: https://prospai-tmp-web.onrender.com
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: APOLLO_API_KEY
+        sync: false
+      - key: DROPCONTACT_API_KEY
+        sync: false
+
+  - type: web
+    name: prospai-tmp-web
+    runtime: docker
+    repo: https://github.com/najiblazaartech/Prospai_tmp
+    branch: fix/real-data-and-cors
+    rootDir: frontend
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: frankfurt
+    autoDeploy: true
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://prospai-tmp-api.onrender.com
