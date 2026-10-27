@@ -6,8 +6,8 @@ import { login, register, setToken } from "@/lib/api";
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState("demo@prospai.app");
-  const [password, setPassword] = useState("prospai123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -51,14 +51,11 @@ export default function LoginPage() {
             className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" required
             className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
-          {error && <div className="text-xs text-red-600">{error}</div>}
+          {error && <div role="alert" className="text-xs text-red-600">{error}</div>}
           <button disabled={loading}
             className="w-full rounded-xl bg-indigo-600 p-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
-            {loading ? "..." : mode === "login" ? "Se connecter" : "Creer mon compte"}
+            {loading ? "..." : mode === "login" ? "Se connecter" : "Créer mon compte"}
           </button>
-          <p className="text-[11px] text-slate-400 text-center">
-            Compte demo : demo@prospai.app / prospai123
-          </p>
         </form>
       </div>
     </main>
