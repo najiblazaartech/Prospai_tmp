@@ -34,17 +34,17 @@ def test_discover_web_parse_et_dedup(monkeypatch):
     domains = [l["enrichment"]["website"] for l in leads]
     assert "mesacquisitions.com" in domains
     assert "groupe-ftc.com" in domains
-    assert "linkedin.com" not in domains           # plateformes ecartees
-    assert len(domains) == len(set(domains))       # dedup par domaine
+    assert "linkedin.com" not in domains
+    assert len(domains) == len(set(domains))
     for l in leads:
         assert l["source"] == "web"
         assert l["company"]
-        assert l["email"] == ""                    # aucun email invente
+        assert l["email"] == ""
         assert l["enrichment"]["url"].startswith("https://")
 
 
 def test_discover_web_reseau_indisponible(monkeypatch):
-    """Si le reseau echoue, retourne [] (le caller bascule sur son repli)."""
+    """Si le reseau echoue, retourne [] sans fabriquer de resultats."""
     def fake_post(*a, **k):
         raise ConnectionError("no network")
     monkeypatch.setattr(web_discovery.httpx, "post", fake_post)
@@ -53,7 +53,7 @@ def test_discover_web_reseau_indisponible(monkeypatch):
 
 
 def test_discover_leads_chaine_de_resolution(monkeypatch):
-    """WEB_DISCOVERY on -> web live ; sans reseau -> repli cure, sans dependre du cache de settings."""
+    """WEB_DISCOVERY on -> web live ; sans reseau -> aucun resultat fictif."""
     from app.services import providers
 
     def fake_post(url, data=None, headers=None, timeout=None, follow_redirects=None):
@@ -67,9 +67,8 @@ def test_discover_leads_chaine_de_resolution(monkeypatch):
     leads = providers.discover_leads(target, limit=10)
     assert leads and all(l["source"] == "web" for l in leads)
 
-    # Sans reseau : bascule propre sur le repli cure (vertical transmission)
     def no_network(*a, **k):
         raise ConnectionError("no network")
     monkeypatch.setattr(web_discovery.httpx, "post", no_network)
     leads = providers.discover_leads(target, limit=10)
-    assert leads and all(l["source"] == "curated-web" for l in leads)
+    assert leads == []
