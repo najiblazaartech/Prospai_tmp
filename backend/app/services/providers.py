@@ -1,11 +1,4 @@
-"""Couche providers : decouverte REELLE par defaut, replis degrades sinon.
-
-Ordre de resolution :
-1. APOLLO (si cle B2B fournie) : donnees people enrichies.
-2. WEB DISCOVERY (WEB_DISCOVERY=true, defaut en prod) : recherche web en
-   direct a partir du prompt - c'est le vrai moteur du SaaS.
-3. En mode developpement/test uniquement : dataset curé ou pool de test.
-"""
+"""Couche providers : découverte réelle en production, replis de test en développement."""
 import json
 import os
 import random
@@ -15,7 +8,6 @@ from app.core.config import get_settings
 _DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data"
 )
-
 _CURATED_DATASET = "flaireprise_prospects.json"
 _CURATED_KEYWORDS = [
     "flaireprise", "bodacc", "fonds de commerce", "transmission", "reprise",
@@ -36,9 +28,10 @@ def discover_leads(target: dict, limit: int = 10) -> list:
     s = get_settings()
     if s.APOLLO_API_KEY:
         return _apollo_discover(s.APOLLO_API_KEY, target, limit)
-    if s.WEB_DISCOVERY and target.get("raw"):
-        # Mode réel : ne jamais afficher de données de démonstration si la
-        # recherche échoue ou ne trouve rien. Une liste vide est plus honnête.
+    if s.WEB_DISCOVERY:
+        # Mode production : aucune donnée fictive si la requête est vide ou si le web échoue.
+        if not target.get("raw"):
+            return []
         from app.services.web_discovery import discover_web
         return discover_web(target, limit)
     return _mock_discover(target, limit)
@@ -72,19 +65,19 @@ def _mock_discover(target: dict, limit: int) -> list:
     leads = random.sample(_MOCK_POOL, k=min(limit, len(_MOCK_POOL)))
     out = []
     for l in leads:
-        l = dict(l)
-        l["country"] = (target.get("countries") or ["France"])[0]
-        l["source"] = "mock"
-        out.append(l)
+        lead = dict(l)
+        lead["country"] = (target.get("countries") or ["France"])[0]
+        lead["source"] = "mock"
+        out.append(lead)
     return out
 
 
 def _curated_discover(limit: int) -> list:
-    """Repli hors-ligne uniquement pour les tests / developpement."""
+    """Repli hors ligne uniquement pour les tests et le développement."""
     out = []
     for p in _load_curated(_CURATED_DATASET)[:limit]:
         out.append({
-            "full_name": p.get("decideur") or "Decideur a identifier",
+            "full_name": p.get("decideur") or "Décideur à identifier",
             "role": p.get("segment", ""),
             "company": p.get("company", ""),
             "company_size": "",

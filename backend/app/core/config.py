@@ -9,13 +9,13 @@ class Settings(BaseSettings):
     MISTRAL_API_KEY: str = ""
     APOLLO_API_KEY: str = ""
     DROPCONTACT_API_KEY: str = ""
-    # Decouverte web en direct (gratuite, sans cle). Off en tests pour rester
-    # deterministes ; on en production (voir .env.example / docker-compose).
+    # En production, Render définit WEB_DISCOVERY=true pour interdire les données fictives.
     WEB_DISCOVERY: bool = False
+    # Origines web autorisées, séparées par des virgules.
+    CORS_ORIGINS: str = "http://localhost:3000"
 
-    # Conformite : revue manuelle par defaut (RGPD / LinkedIn ToS)
+    # Conformité : revue manuelle par défaut (RGPD / LinkedIn ToS)
     MANUAL_REVIEW_DEFAULT: bool = True
-    # Quotas anti-ban conservateurs
     MAX_LINKEDIN_ACTIONS_PER_DAY: int = 80
 
     class Config:
