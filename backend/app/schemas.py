@@ -38,6 +38,7 @@ class LeadOut(BaseModel):
     score_reasons: list
     crm_status: str
     source: str
+    enrichment: dict = Field(default_factory=dict)
 
     class Config:
         from_attributes = True

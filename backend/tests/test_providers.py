@@ -1,4 +1,7 @@
 """Tests des providers mock (mode sans cle) et du dataset cure Flaireprise."""
+from types import SimpleNamespace
+
+from app.services import providers
 from app.services.providers import discover_leads, verify_email
 
 
@@ -11,6 +14,20 @@ def test_discover_leads_mock():
         assert l["source"] == "mock"
 
 
+def test_live_discovery_never_falls_back_to_mock(monkeypatch):
+    """En mode réel, aucun prospect fictif si la recherche web ne retourne rien."""
+    monkeypatch.setattr(
+        providers, "get_settings",
+        lambda: SimpleNamespace(APOLLO_API_KEY="", WEB_DISCOVERY=True),
+    )
+    monkeypatch.setattr(
+        "app.services.web_discovery.discover_web",
+        lambda target, limit: [],
+    )
+    leads = discover_leads({"raw": "agences de communication B2B en France"}, limit=5)
+    assert leads == []
+
+
 def test_verify_email_heuristique():
     assert verify_email("claire@saasflow.io") == "valide"
     assert verify_email("sofia@gmail.com") == "risky"
@@ -18,7 +35,7 @@ def test_verify_email_heuristique():
 
 
 def test_curated_flaireprise_dataset():
-    """Un prompt ciblant l'ecosysteme transmission/FDC renvoie le dataset verifie."""
+    """Un prompt ciblant l'ecosysteme transmission/FDC renvoie le dataset local de test."""
     target = {"countries": ["France"],
               "raw": "Prospects Flaireprise : courtiers fonds de commerce et cabinets de transmission en France"}
     leads = discover_leads(target, limit=10)
@@ -33,12 +50,12 @@ def test_curated_flaireprise_dataset():
 
 
 def test_curated_dataset_complet():
-    """Le dataset contient les 50 prospects, servis dans l'ordre de rang."""
+    """Le dataset contient 50 prospects tries par rang; les contacts peuvent manquer."""
     leads = discover_leads({"raw": "veille BODACC liquidations et redressements"}, limit=100)
     assert len(leads) == 50
     ranks = [l["enrichment"]["rank"] for l in leads]
     assert ranks == sorted(ranks)
     assert ranks[0] == 1 and ranks[-1] == 50
-    # aucun email fabrique : contact par canal public uniquement
+    # aucun email fabrique; le canal public reste vide si non verifie
     assert all(l["email"] == "" for l in leads)
-    assert all(l["enrichment"].get("contact") for l in leads)
+    assert all(l["enrichment"].get("research_source") for l in leads)

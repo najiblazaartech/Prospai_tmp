@@ -4,8 +4,7 @@ Ordre de resolution :
 1. APOLLO (si cle B2B fournie) : donnees people enrichies.
 2. WEB DISCOVERY (WEB_DISCOVERY=true, defaut en prod) : recherche web en
    direct a partir du prompt - c'est le vrai moteur du SaaS.
-3. Repli hors-ligne : dataset cure (vertical transmission francais) pour
-   l'ecosysteme FDC/BODACC, sinon pool de demo.
+3. En mode developpement/test uniquement : dataset curé ou pool de test.
 """
 import json
 import os
@@ -38,10 +37,10 @@ def discover_leads(target: dict, limit: int = 10) -> list:
     if s.APOLLO_API_KEY:
         return _apollo_discover(s.APOLLO_API_KEY, target, limit)
     if s.WEB_DISCOVERY and target.get("raw"):
+        # Mode réel : ne jamais afficher de données de démonstration si la
+        # recherche échoue ou ne trouve rien. Une liste vide est plus honnête.
         from app.services.web_discovery import discover_web
-        web_leads = discover_web(target, limit)
-        if web_leads:
-            return web_leads
+        return discover_web(target, limit)
     return _mock_discover(target, limit)
 
 
@@ -81,10 +80,7 @@ def _mock_discover(target: dict, limit: int) -> list:
 
 
 def _curated_discover(limit: int) -> list:
-    """Repli hors-ligne uniquement (pas de reseau) : dataset Flaireprise verifie.
-
-    Aucun email n'est invente : le contact passe par le canal public indique.
-    """
+    """Repli hors-ligne uniquement pour les tests / developpement."""
     out = []
     for p in _load_curated(_CURATED_DATASET)[:limit]:
         out.append({
