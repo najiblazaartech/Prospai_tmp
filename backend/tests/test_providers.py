@@ -88,3 +88,37 @@ def test_curated_dataset_complet(monkeypatch):
     assert ranks[0] == 1 and ranks[-1] == 50
     assert all(lead["email"] == "" for lead in leads)
     assert all(lead["enrichment"].get("research_source") for lead in leads)
+
+
+def test_web_discovery_parses_real_result_without_inventing_contact(monkeypatch):
+    """La recherche web conserve l'URL source et n'invente pas de contact."""
+    from app.services import web_discovery
+
+    monkeypatch.setattr(
+        web_discovery, "_ddg_search",
+        lambda query: [
+            ("Cabinet Exemple - Conseil", "https://www.cabinet-exemple.fr/nos-services", "Conseil aux entreprises"),
+            ("LinkedIn", "https://www.linkedin.com/company/example", "Profil social"),
+        ],
+    )
+    leads = web_discovery.discover_web({"raw": "cabinet conseil entreprise France"}, limit=5)
+
+    assert len(leads) == 1
+    lead = leads[0]
+    assert lead["company"] == "Cabinet Exemple"
+    assert lead["source"] == "web"
+    assert lead["email"] == ""
+    assert lead["full_name"] == "Décideur à identifier"
+    assert lead["enrichment"]["url"] == "https://www.cabinet-exemple.fr/nos-services"
+    assert lead["enrichment"]["snippet"] == "Conseil aux entreprises"
+
+
+def test_web_discovery_returns_empty_when_search_fails(monkeypatch):
+    """Une panne du moteur ne déclenche aucun repli vers des prospects fictifs."""
+    from app.services import web_discovery
+
+    def fail(_query):
+        raise RuntimeError("search unavailable")
+
+    monkeypatch.setattr(web_discovery, "_ddg_search", fail)
+    assert web_discovery.discover_web({"raw": "cabinet conseil entreprise France"}, limit=5) == []
