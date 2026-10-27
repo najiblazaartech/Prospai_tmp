@@ -1,18 +1,25 @@
-# Render Blueprint for ProspAI (working copy only).
-# Database is managed separately in Render to avoid creating a duplicate database.
+# Render Blueprint for ProspAI — working copy only.
+# The database name matches the existing Render PostgreSQL resource.
+databases:
+  - name: prospai-tmp-db
+    databaseName: prospai_tmp_db
+    user: prospai_tmp_db_user
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "16"
+
 services:
   - type: web
     name: prospai-tmp-api
     runtime: docker
     repo: https://github.com/najiblazaartech/Prospai_tmp
     branch: fix/real-data-and-cors
-    rootDir: backend
-    dockerContext: .
-    dockerfilePath: ./Dockerfile
+    dockerContext: backend
+    dockerfilePath: backend/Dockerfile
     plan: free
     region: frankfurt
     healthCheckPath: /health
-    autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       - key: ENV
         value: production
@@ -21,27 +28,28 @@ services:
       - key: CORS_ORIGINS
         value: https://prospai-tmp-web.onrender.com
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: prospai-tmp-db
+          property: connectionString
       - key: SECRET_KEY
-        sync: false
+        generateValue: true
       - key: MISTRAL_API_KEY
-        sync: false
+        value: ""
       - key: APOLLO_API_KEY
-        sync: false
+        value: ""
       - key: DROPCONTACT_API_KEY
-        sync: false
+        value: ""
 
   - type: web
     name: prospai-tmp-web
     runtime: docker
     repo: https://github.com/najiblazaartech/Prospai_tmp
     branch: fix/real-data-and-cors
-    rootDir: frontend
-    dockerContext: .
-    dockerfilePath: ./Dockerfile
+    dockerContext: frontend
+    dockerfilePath: frontend/Dockerfile
     plan: free
     region: frankfurt
-    autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: https://prospai-tmp-api.onrender.com
