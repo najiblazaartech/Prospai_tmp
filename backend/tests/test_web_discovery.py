@@ -53,7 +53,7 @@ def test_discover_web_reseau_indisponible(monkeypatch):
 
 
 def test_discover_leads_chaine_de_resolution(monkeypatch):
-    """WEB_DISCOVERY on -> web live ; sans reseau -> repli cure, sans dependre du cache de settings."""
+    """WEB_DISCOVERY on -> web live ; sans reseau -> aucun faux resultat."""
     from app.services import providers
 
     def fake_post(url, data=None, headers=None, timeout=None, follow_redirects=None):
@@ -67,9 +67,9 @@ def test_discover_leads_chaine_de_resolution(monkeypatch):
     leads = providers.discover_leads(target, limit=10)
     assert leads and all(l["source"] == "web" for l in leads)
 
-    # Sans reseau : bascule propre sur le repli cure (vertical transmission)
+    # Sans reseau : aucune substitution par des donnees hors ligne.
     def no_network(*a, **k):
         raise ConnectionError("no network")
     monkeypatch.setattr(web_discovery.httpx, "post", no_network)
     leads = providers.discover_leads(target, limit=10)
-    assert leads and all(l["source"] == "curated-web" for l in leads)
+    assert leads == []
