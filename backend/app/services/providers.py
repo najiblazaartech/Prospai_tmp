@@ -37,12 +37,11 @@ def discover_leads(target: dict, limit: int = 10) -> list:
     s = get_settings()
     if s.APOLLO_API_KEY:
         return _apollo_discover(s.APOLLO_API_KEY, target, limit)
+    # Never silently substitute synthetic records for real search results.
     if s.WEB_DISCOVERY and target.get("raw"):
         from app.services.web_discovery import discover_web
-        web_leads = discover_web(target, limit)
-        if web_leads:
-            return web_leads
-    return _mock_discover(target, limit)
+        return discover_web(target, limit)
+    return []
 
 
 def verify_email(email: str) -> str:

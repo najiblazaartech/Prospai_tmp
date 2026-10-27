@@ -12,14 +12,21 @@ export default function SearchPanel() {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [campaignId, setCampaignId] = useState<number | null>(null);
   const [flash, setFlash] = useState("");
+  const [error, setError] = useState("");
+  const [searched, setSearched] = useState(false);
 
   const run = async () => {
     setLoading(true);
     setFlash("");
+    setError("");
+    setSearched(true);
     try {
       const res = await searchLeads(prompt, 8);
       setLeads(res);
       setCampaigns(await listCampaigns());
+      if (!res.length) setFlash("Aucun résultat web exploitable. Aucun prospect fictif n’a été ajouté.");
+    } catch (err: any) {
+      setError("La recherche en direct a échoué : " + String(err?.message || err));
     } finally {
       setLoading(false);
     }
@@ -68,16 +75,19 @@ export default function SearchPanel() {
         {flash && <div className="mt-3 rounded-xl bg-indigo-50 p-3 text-xs text-indigo-700">{flash}</div>}
       </div>
 
+      {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {leads.length > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-100 font-semibold text-sm">
-            Shortlist scoree ({leads.length} leads)
+            Résultats issus du web ({leads.length})
           </div>
           {leads.map((l: any) => (
             <div key={l.id} className="flex items-center gap-4 px-5 py-3 border-b border-slate-50 hover:bg-slate-50">
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold">{l.full_name} <span className="font-normal text-slate-500">- {l.role}, {l.company} ({l.company_size} pers.)</span></div>
-                <div className="text-xs text-slate-500">({(l.score_reasons || []).join(" - ")})</div>
+                <div className="text-xs text-slate-500">{(l.score_reasons || []).join(" · ")}</div>
+                {l.enrichment?.url && <a className="text-xs text-indigo-600 underline" href={l.enrichment.url} target="_blank" rel="noreferrer">Source web : {l.enrichment.website || l.enrichment.url}</a>}
+                {l.enrichment?.snippet && <div className="text-xs text-slate-500 mt-1">{l.enrichment.snippet}</div>}
               </div>
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${l.email_status === "valide" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
                 email {l.email_status}
@@ -91,6 +101,7 @@ export default function SearchPanel() {
           ))}
         </div>
       )}
+      {searched && !loading && leads.length === 0 && !error && <div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">Aucun prospect affiché. ProspAI ne remplit pas la liste avec des fiches inventées.</div>}
     </div>
   );
 }

@@ -6,8 +6,8 @@ import { login, register, setToken } from "@/lib/api";
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState("demo@prospai.app");
-  const [password, setPassword] = useState("prospai123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -57,7 +57,7 @@ export default function LoginPage() {
             {loading ? "..." : mode === "login" ? "Se connecter" : "Creer mon compte"}
           </button>
           <p className="text-[11px] text-slate-400 text-center">
-            Compte demo : demo@prospai.app / prospai123
+            Connectez-vous ou créez un compte. Les recherches doivent retourner des résultats web réels.
           </p>
         </form>
       </div>
