@@ -82,7 +82,7 @@ def _ddg_search(query: str) -> list:
         href = html_lib.unescape(href)
         parsed = urlparse(href)
         params = parse_qs(parsed.query)
-        real_url = params.get("udd3", [href])[0] if params.get("udd3") else (
+        real_url = params.get("uddg", [href])[0] if params.get("uddg") else (
             "https:" + href if href.startswith("//") else href)
         title = html_lib.unescape(re.sub(r"<[^>]+>", "", title_html)).strip()
         snippet = html_lib.unescape(re.sub(r"<[^>]+>", "", _snip or "")).strip()
