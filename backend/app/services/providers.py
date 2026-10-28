@@ -2,9 +2,8 @@
 
 Ordre de resolution :
 1. APOLLO (si cle B2B fournie) : donnees people enrichies.
-2. WEB DISCOVERY (WEB_DISCOVERY=true, defaut en prod) : recherche web en
-   direct a partir du prompt - c'est le vrai moteur du SaaS.
-3. En mode developpement/test uniquement : dataset curé ou pool de test.
+2. WEB DISCOVERY ou environnement de production : recherche web en direct.
+3. En developpement/test uniquement : dataset cure ou pool de test.
 """
 import json
 import os
@@ -36,11 +35,16 @@ def discover_leads(target: dict, limit: int = 10) -> list:
     s = get_settings()
     if s.APOLLO_API_KEY:
         return _apollo_discover(s.APOLLO_API_KEY, target, limit)
-    if s.WEB_DISCOVERY and target.get("raw"):
-        # Mode réel : ne jamais afficher de données de démonstration si la
-        # recherche échoue ou ne trouve rien. Une liste vide est plus honnête.
+
+    # Production must never silently fall back to synthetic or curated data.
+    # An empty prompt is not a reason to return mock records either.
+    live_only = bool(s.WEB_DISCOVERY) or str(getattr(s, "ENV", "development")).lower() == "production"
+    if live_only:
+        if not (target.get("raw") or "").strip():
+            return []
         from app.services.web_discovery import discover_web
         return discover_web(target, limit)
+
     return _mock_discover(target, limit)
 
 

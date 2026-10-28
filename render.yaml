@@ -1,0 +1,55 @@
+# Render Blueprint for ProspAI — working copy only.
+# The database name matches the existing Render PostgreSQL resource.
+databases:
+  - name: prospai-tmp-db
+    databaseName: prospai_tmp_db
+    user: prospai_tmp_db_user
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: prospai-tmp-api
+    runtime: docker
+    repo: https://github.com/najiblazaartech/Prospai_tmp
+    branch: fix/real-data-and-cors
+    dockerContext: backend
+    dockerfilePath: backend/Dockerfile
+    plan: free
+    region: frankfurt
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: ENV
+        value: production
+      - key: WEB_DISCOVERY
+        value: "true"
+      - key: CORS_ORIGINS
+        value: https://prospai-tmp-web.onrender.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: prospai-tmp-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: MISTRAL_API_KEY
+        value: ""
+      - key: APOLLO_API_KEY
+        value: ""
+      - key: DROPCONTACT_API_KEY
+        value: ""
+
+  - type: web
+    name: prospai-tmp-web
+    runtime: docker
+    repo: https://github.com/najiblazaartech/Prospai_tmp
+    branch: fix/real-data-and-cors
+    dockerContext: frontend
+    dockerfilePath: frontend/Dockerfile
+    plan: free
+    region: frankfurt
+    autoDeployTrigger: commit
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://prospai-tmp-api.onrender.com
