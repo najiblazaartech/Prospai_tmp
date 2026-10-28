@@ -1,4 +1,4 @@
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "https://prospai-tmp-api.onrender.com";
 
 export function setToken(t: string) {
   if (typeof window !== "undefined") localStorage.setItem("prospai_token", t);
