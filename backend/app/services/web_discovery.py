@@ -1,55 +1,63 @@
-"""Decouverte web REELLE : prompt -> requetes -> moteur de recherche -> entreprises.
-
-Aucune liste figee : a chaque recherche, le SaaS interroge le web en direct
-(DuckDuckGo HTML, gratuit, sans cle), extrait les entreprises trouvees et
-les deduplique par domaine. Le dataset cure n'est plus qu'un repli hors-ligne.
-"""
+"""Découverte web réelle, avec requêtes métier françaises et erreurs explicites."""
 import html as html_lib
+import logging
 import re
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 
+logger = logging.getLogger(__name__)
 DDG_URL = "https://html.duckduckgo.com/html/"
-USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ProspAI/1.0"
+USER_AGENT = "Mozilla/5.0 (compatible; ProspAI/1.0; +https://prospai-tmp-web.onrender.com)"
 
-# Domaines non-entreprises a ecarter des resultats
 SKIP_DOMAINS = {
     "linkedin.com", "facebook.com", "instagram.com", "twitter.com", "x.com",
     "youtube.com", "wikipedia.org", "pagesjaunes.fr", "google.com", "bing.com",
     "duckduckgo.com", "yelp.fr", "trustpilot.com", "tripadvisor.fr",
     "societe.com", "infogreffe.fr", "bodacc.fr", "pappers.fr", "data.gouv.fr",
 }
-
 STOPWORDS = {
     "les", "des", "une", "pour", "avec", "dans", "par", "sur", "chez", "aux",
-    "mon", "mes", "nos", "votre", "vos", "the", "and", "avec", "sous", "entre",
-    "qui", "que", "quoi", "tout", "tous", "cette", "ce", "ceux", "en", "au",
-    "et", "ou", "où", "la", "le", "du", "de", "a", "à", "d", "l",
+    "mon", "mes", "nos", "votre", "vos", "the", "and", "sous", "entre", "qui",
+    "que", "quoi", "tout", "tous", "cette", "ce", "ceux", "en", "au", "et",
+    "ou", "où", "la", "le", "du", "de", "a", "à", "d", "l",
 }
 
 
-def extract_keywords(prompt: str, max_keywords: int = 6) -> list:
-    """Extrait les mots-cles significatifs du prompt NL."""
+class WebDiscoveryError(RuntimeError):
+    """Raised when the web provider cannot be queried reliably."""
+
+
+def extract_keywords(prompt: str, max_keywords: int = 12) -> list:
+    """Keep enough of the user's target to avoid over-narrowing French queries."""
     words = re.findall(r"[a-zA-Zàâäéèêëîïôöùûüç\-]{3,}", prompt.lower())
     seen, out = set(), []
-    for w in words:
-        if w not in STOPWORDS and w not in seen:
-            seen.add(w)
-            out.append(w)
+    for word in words:
+        if word not in STOPWORDS and word not in seen:
+            seen.add(word)
+            out.append(word)
     return out[:max_keywords]
 
 
-def build_queries(keywords: list, limit: int) -> list:
-    """Genere plusieurs requetes a partir des mots-cles (diversite des sources)."""
-    base = " ".join(keywords)
-    suffixes = ["", "annuaire", "expert", "cabinet conseil", "avis clients"]
+def build_queries(keywords: list, limit: int, prompt: str = "") -> list:
+    """Use both the user's wording and French business-transfer synonyms."""
+    base = " ".join(keywords).strip()
+    p = (prompt or "").lower()
     queries = []
-    for sfx in suffixes:
-        if len(queries) * 10 >= limit + 5:
-            break
-        queries.append((base + " " + sfx).strip())
-    return queries[:5]
+    if any(term in p for term in ("transmission", "fonds de commerce", "cession", "courtiers")):
+        queries.extend([
+            '"cabinet transmission entreprise" France',
+            '"courtier en fonds de commerce" France',
+            '"cession fonds de commerce" cabinet conseil France',
+            '"transmission reprise entreprise" "cabinet" France',
+            'annuaire intermédiaires transmission entreprise France',
+        ])
+    if base:
+        queries.append(base + " France")
+        queries.append(base + " annuaire")
+    # Preserve order and avoid repeated queries.
+    unique = list(dict.fromkeys(q for q in queries if q.strip()))
+    return unique[:max(3, min(8, limit))]
 
 
 def _clean_domain(url: str) -> str:
@@ -66,58 +74,85 @@ def _base_domain(domain: str) -> str:
 
 
 def _ddg_search(query: str) -> list:
-    """Interroge DuckDuckGo HTML et retourne [(titre, url_reelle, snippet)]."""
-    r = httpx.post(
-        DDG_URL, data={"q": query},
-        headers={"User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded"},
-        timeout=15, follow_redirects=True,
+    """Fetch DuckDuckGo HTML results without relying on attribute ordering."""
+    response = httpx.post(
+        DDG_URL,
+        data={"q": query},
+        headers={"User-Agent": USER_AGENT},
+        timeout=15,
+        follow_redirects=True,
     )
-    r.raise_for_status()
-    page = r.text
+    response.raise_for_status()
+    page = response.text
+    if "anomaly.js" in page.lower() or "bots use duckduckgo" in page.lower():
+        raise WebDiscoveryError("DuckDuckGo a bloqué la recherche automatisée.")
+
     results = []
-    links = re.findall(r'<a[^>]*class="result__a"[^>]*>(.*?)</a>', page, re.S)
-    snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</(?:a|div)>', page, re.S)
-    hrefs = re.findall(r'<a[^>]*class="result__a"[^>]*href="([^"]+)"', page)
-    for (title_html, href, _snip) in zip(links, hrefs, snippets + [""] * len(links)):
-        href = html_lib.unescape(href)
+    # Attribute order varies; inspect every anchor and select result__a links.
+    for match in re.finditer(r"<a\b([^>]*)>(.*?)</a>", page, re.I | re.S):
+        attrs, title_html = match.group(1), match.group(2)
+        if not re.search(r'class=["\'][^"\']*result__a', attrs, re.I):
+            continue
+        href_match = re.search(r'href=["\']([^"\']+)["\']', attrs, re.I)
+        if not href_match:
+            continue
+        href = html_lib.unescape(href_match.group(1))
         parsed = urlparse(href)
         params = parse_qs(parsed.query)
-        real_url = params.get("udd3", [href])[0] if params.get("udd3") else (
-            "https:" + href if href.startswith("//") else href)
+        real_url = params.get("uddg", params.get("udd3", [href]))[0]
+        if real_url.startswith("//"):
+            real_url = "https:" + real_url
         title = html_lib.unescape(re.sub(r"<[^>]+>", "", title_html)).strip()
-        snippet = html_lib.unescape(re.sub(r"<[^>]+>", "", _snip or "")).strip()
-        results.append((title, real_url, snippet))
-    return results
+        if not title:
+            continue
+        results.append((title, real_url, ""))
+
+    # Attach snippets by result order where available; missing snippets are OK.
+    snippets = re.findall(
+        r'class=["\'][^"\']*result__snippet[^"\']*["\'][^>]*>(.*?)</(?:a|div)>',
+        page, re.I | re.S,
+    )
+    cleaned = [
+        html_lib.unescape(re.sub(r"<[^>]+>", "", snippet)).strip()
+        for snippet in snippets
+    ]
+    return [
+        (title, url, cleaned[i] if i < len(cleaned) else snippet)
+        for i, (title, url, snippet) in enumerate(results)
+    ]
 
 
 def discover_web(target: dict, limit: int = 10) -> list:
-    """Pipeline : prompt -> requetes -> recherche live -> entreprises dedupliquees.
-
-    Retourne [] si le reseau est indisponible (le caller bascule sur son repli).
-    """
+    """Search live web results; distinguish a genuine zero from provider failure."""
     prompt = target.get("raw") or ""
     keywords = extract_keywords(prompt)
     if not keywords:
         return []
-    queries = build_queries(keywords, limit)
+
+    queries = build_queries(keywords, limit, prompt)
     seen_domains, leads = set(), []
-    for q in queries:
+    successful_queries = 0
+    failures = []
+
+    for query in queries:
         if len(leads) >= limit:
             break
         try:
-            results = _ddg_search(q)
-        except Exception:
-            continue  # requete ratee -> on tente la suivante
+            results = _ddg_search(query)
+            successful_queries += 1
+        except Exception as exc:
+            failures.append(f"{query}: {type(exc).__name__}: {exc}")
+            logger.warning("Web discovery query failed (%s): %s", query, exc)
+            continue
+
         for title, url, snippet in results:
             domain = _clean_domain(url)
-            if not domain or not title:
-                continue
-            if _base_domain(domain) in SKIP_DOMAINS:
+            if not domain or not title or _base_domain(domain) in SKIP_DOMAINS:
                 continue
             if domain in seen_domains:
                 continue
             seen_domains.add(domain)
-            company = (title.split(" - ")[0].split(" | ")[0].split(" — ")[0]).strip() or domain
+            company = title.split(" - ")[0].split(" | ")[0].split(" — ")[0].strip() or domain
             leads.append({
                 "full_name": "Décideur à identifier",
                 "role": "",
@@ -131,11 +166,17 @@ def discover_web(target: dict, limit: int = 10) -> list:
                     "website": domain,
                     "url": url,
                     "snippet": snippet[:300],
-                    "search_query": q,
+                    "search_query": query,
                     "research_source": url,
                     "industry": " ".join(keywords[:3]),
                 },
             })
             if len(leads) >= limit:
                 break
+
+    if successful_queries == 0 and failures:
+        # Do not mislead the UI into reporting "no matching companies" when
+        # the search provider was unreachable or blocked.
+        raise WebDiscoveryError("Impossible d'interroger le moteur de recherche. " + " | ".join(failures[:2]))
+    logger.info("Web discovery completed: queries=%s successful=%s leads=%s", len(queries), successful_queries, len(leads))
     return leads

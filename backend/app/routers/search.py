@@ -7,6 +7,7 @@ from app.models import Lead, User, Workspace, WorkspaceMember
 from app.schemas import SearchRequest, LeadOut
 from app.services import providers
 from app.services.scoring import parse_prompt, score_lead
+from app.services.web_discovery import WebDiscoveryError
 
 router = APIRouter(prefix="/search", tags=["recherche IA"])
 
@@ -20,10 +21,16 @@ def _get_workspace(db: Session, user: User) -> Workspace:
 
 @router.post("", response_model=list[LeadOut])
 def search(body: SearchRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Pipeline : prompt NL -> decouverte -> verification -> scoring explicable."""
+    """Pipeline : prompt NL -> découverte -> vérification -> scoring explicable."""
     ws = _get_workspace(db, user)
     target = parse_prompt(body.prompt)
-    candidates = providers.discover_leads(target, body.limit)
+    try:
+        candidates = providers.discover_leads(target, body.limit)
+    except WebDiscoveryError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Le moteur de recherche web est temporairement indisponible. Réessaie plus tard. Détail : " + str(exc),
+        ) from exc
 
     created = []
     for c in candidates:
