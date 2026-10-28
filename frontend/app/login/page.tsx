@@ -37,19 +37,19 @@ export default function LoginPage() {
         <form onSubmit={submit} className="rounded-2xl bg-white border border-slate-200 p-6 space-y-4 shadow-sm">
           <div className="flex bg-slate-100 rounded-xl p-1">
             {(["login", "register"] as const).map((m) => (
-              <button key={m} type="button" onClick={() => setMode(m)}
+              <button key={m} type="button" onClick={() => { setMode(m); setError(""); }}
                 className={`flex-1 rounded-lg py-1.5 text-sm font-medium ${mode === m ? "bg-white shadow text-indigo-600" : "text-slate-600"}`}>
                 {m === "login" ? "Connexion" : "Inscription"}
               </button>
             ))}
           </div>
           {mode === "register" && (
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nom complet"
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nom complet" required
               className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
           )}
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required
             className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" required
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" required minLength={8}
             className="w-full rounded-xl border border-slate-200 p-3 text-sm" />
           {error && <div role="alert" className="text-xs text-red-600">{error}</div>}
           <button disabled={loading}
