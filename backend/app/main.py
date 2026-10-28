@@ -13,7 +13,7 @@ app = FastAPI(
 )
 
 # Configure allowed browser origins at deployment time, e.g.
-# CORS_ORIGINS=https://prospai-tmp.vercel.app,http://localhost:3000
+# CORS_ORIGINS=https://prospai-tmp-web.onrender.com,https://prospai-tmp.vercel.app,http://localhost:3000
 _origins = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
@@ -22,6 +22,8 @@ _origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
+    # Vercel preview and production domains; keep this scoped to vercel.app.
+    allow_origin_regex=r"https://[a-zA-Z0-9-]+\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

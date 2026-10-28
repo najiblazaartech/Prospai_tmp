@@ -1,5 +1,5 @@
-# Render Blueprint for ProspAI — working copy only.
-# The database name matches the existing Render PostgreSQL resource.
+# Render Blueprint for ProspAI working copy.
+# Keep the existing service/database names to avoid creating duplicate resources.
 databases:
   - name: prospai-tmp-db
     databaseName: prospai_tmp_db
@@ -13,7 +13,7 @@ services:
     name: prospai-tmp-api
     runtime: docker
     repo: https://github.com/najiblazaartech/Prospai_tmp
-    branch: fix/real-data-and-cors
+    branch: main
     dockerContext: backend
     dockerfilePath: backend/Dockerfile
     plan: free
@@ -44,7 +44,7 @@ services:
     name: prospai-tmp-web
     runtime: docker
     repo: https://github.com/najiblazaartech/Prospai_tmp
-    branch: fix/real-data-and-cors
+    branch: main
     dockerContext: frontend
     dockerfilePath: frontend/Dockerfile
     plan: free
