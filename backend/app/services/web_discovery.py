@@ -5,10 +5,13 @@ Aucune liste figee : a chaque recherche, le SaaS interroge le web en direct
 les deduplique par domaine. Le dataset cure n'est plus qu'un repli hors-ligne.
 """
 import html as html_lib
+import logging
 import re
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 DDG_URL = "https://html.duckduckgo.com/html/"
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ProspAI/1.0"
@@ -44,12 +47,8 @@ def build_queries(keywords: list, limit: int) -> list:
     """Genere plusieurs requetes a partir des mots-cles (diversite des sources)."""
     base = " ".join(keywords)
     suffixes = ["", "annuaire", "expert", "cabinet conseil", "avis clients"]
-    queries = []
-    for sfx in suffixes:
-        if len(queries) * 10 >= limit + 5:
-            break
-        queries.append((base + " " + sfx).strip())
-    return queries[:5]
+    # Tester plusieurs formulations plutôt que s'arrêter après une ou deux requêtes.
+    return [(base + " " + sfx).strip() for sfx in suffixes]
 
 
 def _clean_domain(url: str) -> str:
@@ -75,18 +74,31 @@ def _ddg_search(query: str) -> list:
     r.raise_for_status()
     page = r.text
     results = []
-    links = re.findall(r'<a[^>]*class="result__a"[^>]*>(.*?)</a>', page, re.S)
-    snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</(?:a|div)>', page, re.S)
-    hrefs = re.findall(r'<a[^>]*class="result__a"[^>]*href="([^"]+)"', page)
-    for (title_html, href, _snip) in zip(links, hrefs, snippets + [""] * len(links)):
-        href = html_lib.unescape(href)
-        parsed = urlparse(href)
+    # Extraire les attributs indépendamment de leur ordre dans le tag HTML.
+    anchors = []
+    for match in re.finditer(r'<a\\b([^>]*)>(.*?)</a>', page, re.I | re.S):
+        attrs, title_html = match.groups()
+        class_match = re.search(r"""\\bclass\\s*=\\s*["']([^"']*)["']""", attrs, re.I)
+        href_match = re.search(r"""\\bhref\\s*=\\s*["']([^"']+)["']""", attrs, re.I)
+        if not class_match or "result__a" not in class_match.group(1).split() or not href_match:
+            continue
+        href = html_lib.unescape(href_match.group(1))
+        parsed = urlparse("https:" + href if href.startswith("//") else href)
         params = parse_qs(parsed.query)
         real_url = params.get("uddg", [href])[0] if params.get("uddg") else (
             "https:" + href if href.startswith("//") else href)
         title = html_lib.unescape(re.sub(r"<[^>]+>", "", title_html)).strip()
-        snippet = html_lib.unescape(re.sub(r"<[^>]+>", "", _snip or "")).strip()
-        results.append((title, real_url, snippet))
+        if title and real_url.startswith(("http://", "https://")):
+            anchors.append((title, real_url))
+
+    snippets = re.findall(r"""class=["'][^"']*result__snippet[^"']*["'][^>]*>(.*?)</(?:a|div)>""", page, re.I | re.S)
+    snippets = [html_lib.unescape(re.sub(r"<[^>]+>", "", s)).strip() for s in snippets]
+    for i, (title, real_url) in enumerate(anchors):
+        results.append((title, real_url, snippets[i] if i < len(snippets) else ""))
+
+    if not results and re.search(r"captcha|unusual traffic|anomaly", page, re.I):
+        logger.warning("DuckDuckGo anti-bot page for query=%r", query)
+    logger.info("Web discovery query=%r parsed_results=%d", query, len(results))
     return results
 
 
@@ -106,7 +118,8 @@ def discover_web(target: dict, limit: int = 10) -> list:
             break
         try:
             results = _ddg_search(q)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Web discovery failed for query=%r: %s", q, exc)
             continue  # requete ratee -> on tente la suivante
         for title, url, snippet in results:
             domain = _clean_domain(url)
@@ -138,4 +151,5 @@ def discover_web(target: dict, limit: int = 10) -> list:
             })
             if len(leads) >= limit:
                 break
+    logger.info("Web discovery completed: queries=%d leads=%d", len(queries), len(leads))
     return leads
