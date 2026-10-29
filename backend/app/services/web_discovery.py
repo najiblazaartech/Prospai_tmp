@@ -32,7 +32,7 @@ STOPWORDS = {
 }
 
 
-def extract_keywords(prompt: str, max_keywords: int = 6) -> list:
+def extract_keywords(prompt: str, max_keywords: int = 8) -> list:
     """Extrait les mots-cles significatifs du prompt NL."""
     words = re.findall(r"[a-zA-Zàâäéèêëîïôöùûüç\-]{3,}", prompt.lower())
     seen, out = set(), []
@@ -109,6 +109,11 @@ def discover_web(target: dict, limit: int = 10) -> list:
     """
     prompt = target.get("raw") or ""
     keywords = extract_keywords(prompt)
+    countries = target.get("countries") or []
+    # Injecter la zone cible explicitement : elle peut apparaître à la fin du prompt.
+    for country in countries:
+        if country.lower() not in [word.lower() for word in keywords]:
+            keywords.append(country)
     if not keywords:
         return []
     queries = build_queries(keywords, limit)
@@ -138,8 +143,9 @@ def discover_web(target: dict, limit: int = 10) -> list:
                 "company_size": "",
                 "email": "",
                 "linkedin_url": "",
-                "country": "France",
+                "country": countries[0] if len(countries) == 1 and countries[0] != "Global" else "",
                 "source": "web",
+                "country_status": "targeted_not_verified" if len(countries) == 1 and countries[0] != "Global" else "unknown",
                 "enrichment": {
                     "website": domain,
                     "url": url,
