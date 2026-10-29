@@ -1,5 +1,6 @@
 """Moteur de scoring explicable : signaux -> score 0-100 + raisons."""
 import re
+import unicodedata
 
 WEIGHTS = {
     "role_match": 30,
@@ -24,7 +25,6 @@ def score_lead(lead: dict, target: dict) -> tuple:
         reasons.append("Role adjacent")
 
     enr = lead.get("enrichment") or {}
-
     if target.get("industries") and any(
         i.lower() in (lead.get("industry") or enr.get("industry") or "").lower()
         for i in target["industries"]
@@ -32,7 +32,6 @@ def score_lead(lead: dict, target: dict) -> tuple:
         score += WEIGHTS["company_fit"]
         reasons.append("Secteur cible (" + lead.get("company", "") + ")")
 
-    # Fit produit et confiance issus d'une recherche web verifiee (dataset cure)
     fit = (enr.get("fit") or "").lower()
     if fit == "expert":
         score += WEIGHTS["curated_fit"]
@@ -71,34 +70,82 @@ def score_lead(lead: dict, target: dict) -> tuple:
     return min(score, 100), reasons
 
 
-# --- Parsing NL simple (remplace par LLM si MISTRAL_API_KEY fourni) ---
 ROLE_KEYWORDS = {
-    "ceo": ["ceo", "fondateur", "founder", "president"],
-    "head of sales": ["head of sales", "directeur commercial", "directeur des ventes"],
-    "cmo": ["cmo", "directeur marketing"],
-    "founder": ["founder", "fondateur", "co-fondateur"],
+    "ceo": ["ceo", "fondateur", "founder", "president", "président", "chief executive"],
+    "head of sales": ["head of sales", "directeur commercial", "directeur des ventes", "sales director"],
+    "cmo": ["cmo", "directeur marketing", "chief marketing"],
+    "founder": ["founder", "fondateur", "co-fondateur", "cofounder"],
     "sales": ["sales", "commercial", "sdr", "business development"],
     "marketing": ["marketing", "growth"],
 }
 
+# Alias français et anglais normalisés vers des libellés stables.
+COUNTRY_ALIASES = {
+    "France": ["france", "french"],
+    "Belgium": ["belgique", "belgium", "belgian"],
+    "Switzerland": ["suisse", "switzerland", "swiss"],
+    "United Kingdom": ["royaume-uni", "royaume uni", "uk", "united kingdom", "britain", "british", "angleterre", "england"],
+    "United States": ["états-unis", "etats-unis", "united states", "usa", "u.s.a.", "us market", "america", "american"],
+    "Canada": ["canada", "canadian"],
+    "Germany": ["allemagne", "germany", "german"],
+    "Spain": ["espagne", "spain", "spanish"],
+    "Italy": ["italie", "italy", "italian"],
+    "Netherlands": ["pays-bas", "pays bas", "netherlands", "dutch", "holland"],
+    "Portugal": ["portugal", "portuguese"],
+    "Morocco": ["maroc", "morocco", "moroccan"],
+    "Ireland": ["irlande", "ireland", "irish"],
+    "Luxembourg": ["luxembourg"],
+    "United Arab Emirates": ["émirats arabes unis", "emirats arabes unis", "uae", "united arab emirates", "dubai", "dubaï"],
+    "Australia": ["australie", "australia", "australian"],
+    "India": ["inde", "india", "indian"],
+    "Brazil": ["brésil", "bresil", "brazil", "brazilian"],
+    "Mexico": ["mexique", "mexico", "mexican"],
+    "Singapore": ["singapour", "singapore"],
+    "Japan": ["japon", "japan", "japanese"],
+    "China": ["chine", "china", "chinese"],
+    "Sweden": ["suède", "suede", "sweden", "swedish"],
+    "Norway": ["norvège", "norvege", "norway", "norwegian"],
+    "Denmark": ["danemark", "denmark", "danish"],
+    "Poland": ["pologne", "poland", "polish"],
+    "Austria": ["autriche", "austria", "austrian"],
+    "Turkey": ["turquie", "turkey", "turkish"],
+    "South Africa": ["afrique du sud", "south africa"],
+    "Global": ["international", "internationally", "worldwide", "global", "tous les pays", "all countries"],
+    "Europe": ["europe", "européen", "european"],
+}
+
+
+def _normalize(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text.lower())
+    return "".join(ch for ch in text if not unicodedata.combining(ch))
+
 
 def parse_prompt(prompt: str) -> dict:
-    """Transforme un prompt NL en profil cible structure (fallback sans LLM)."""
+    """Transforme un prompt NL en profil cible, sans imposer la France par défaut."""
     p = prompt.lower()
+    normalized = _normalize(p)
     roles = [role for role, kws in ROLE_KEYWORDS.items() if any(k in p for k in kws)]
     industries = []
-    for ind in ["saas", "fintech", "sante", "health", "e-commerce", "agence", "tech"]:
+    for ind in ["saas", "fintech", "sante", "santé", "health", "e-commerce", "agence", "tech"]:
         if ind in p:
             industries.append(ind)
+
     countries = []
-    for c in ["france", "belgique", "suisse", "europe"]:
-        if c in p:
-            countries.append(c.capitalize())
-    size_match = re.search(r"(\d+)\s*(?:a|-|a)\s*(\d+)", p)
+    normalized_padded = " " + normalized.replace("-", " ") + " "
+    for country, aliases in COUNTRY_ALIASES.items():
+        for alias in aliases:
+            alias_norm = _normalize(alias).replace("-", " ")
+            # Boundaries prevent e.g. "us" matching inside unrelated words.
+            if re.search(r"(?<![a-z])" + re.escape(alias_norm) + r"(?![a-z])", normalized_padded):
+                countries.append(country)
+                break
+    countries = list(dict.fromkeys(countries))
+
+    size_match = re.search(r"(\d+)\s*(?:a|-|à)\s*(\d+)", p)
     return {
         "roles": roles or ["founder", "ceo"],
-        "industries": industries,
-        "countries": countries or ["France"],
+        "industries": list(dict.fromkeys(industries)),
+        "countries": countries,
         "size_range": [int(size_match.group(1)), int(size_match.group(2))] if size_match else None,
         "raw": prompt,
     }
